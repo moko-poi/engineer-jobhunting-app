@@ -12,6 +12,8 @@ import { makeStyles } from '@material-ui/core/styles'
 import Container from '@material-ui/core/Container'
 import { GithubLoginButton } from 'react-social-login-buttons'
 import firebase from './utils/firebase'
+import { API_URL } from './const'
+import api from './api'
 
 type State = {
   email: string
@@ -23,11 +25,21 @@ const initialState = {
   password: '',
 }
 
+type User = {
+  id: string
+  uuid: string
+  name: string
+  email: string
+  createdAt: string
+  updatedAt: string
+  deletedAt: string
+}
+
 const SignUp: React.FC = () => {
   const [state, setState] = useState<State>(initialState)
 
   useEffect(() => {
-    firebase.auth().onAuthStateChanged(user => {
+    firebase.auth().onAuthStateChanged(async user => {
       if (user) {
         // user signed in
       } else {
@@ -35,6 +47,25 @@ const SignUp: React.FC = () => {
       }
     })
   }, [])
+
+  const createUser = useCallback(
+    async (params: { email: string | null; uuid: string }) => {
+      return await api.post<User>(`${API_URL}/api/users`, params)
+    },
+    [],
+  )
+
+  const setAPIToToken = useCallback(
+    async (fb: firebase.auth.UserCredential) => {
+      const idToken = await fb.user?.getIdToken()
+      if (!idToken) {
+        console.warn('[Firebase error]: idToken is not provided')
+        return
+      }
+      api.setToken(idToken)
+    },
+    [],
+  )
 
   const handleSignUpWithGitHub = useCallback(async () => {
     const provider = new firebase.auth.GithubAuthProvider()
@@ -46,82 +77,102 @@ const SignUp: React.FC = () => {
         ? await currentUser.linkWithPopup(provider)
         : await firebase.auth().signInWithPopup(provider)
 
-      console.log('res: ', res)
+      await setAPIToToken(res)
+
+      if (!currentUser) {
+        const firebaseUser = res.user as firebase.User
+        const user = await createUser({
+          email: firebaseUser.email,
+          uuid: firebaseUser.uid,
+        })
+        console.log('user: ', user)
+      } else {
+        // maybe get user through API
+      }
     } catch (err) {
       // error handling
       console.error(err)
     }
-  }, [])
+  }, [createUser, setAPIToToken])
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const name = e.target.name;
-    const value = e.target.value;
+    const name = e.target.name
+    const value = e.target.value
     setState(s => ({ ...s, [name]: value }))
   }, [])
 
-  const handleSubmit = useCallback(async (e: SyntheticEvent) => {
-    e.preventDefault()
+  const handleSubmit = useCallback(
+    async (e: SyntheticEvent) => {
+      e.preventDefault()
 
-    const { email, password } = state
+      const { email, password } = state
 
-    try {
-      const res = await firebase.auth().createUserWithEmailAndPassword(email, password)
-      console.log('res: ', res)
-    } catch (e) {
-      // error handling
-      console.error(e)
-    }
+      try {
+        const res = await firebase
+          .auth()
+          .createUserWithEmailAndPassword(email, password)
 
-  }, [state])
+        await setAPIToToken(res)
+
+        const firebaseUser = res.user as firebase.User
+        const user = await createUser({
+          email: firebaseUser.email,
+          uuid: firebaseUser.uid,
+        })
+        console.log('user: ', user)
+      } catch (e) {
+        // error handling
+        console.error(e)
+      }
+    },
+    [createUser, setAPIToToken, state],
+  )
 
   return (
     <div className="h-screen flex justify-center items-center">
-      <div className='
+      <div
+        className="
         max-w-md
         py-4
         border-2
         rounded-lg
         bg-white
         text-center
-        '>
+        "
+      >
         <div className="m-10">
           <form noValidate autoComplete="off" onSubmit={handleSubmit}>
             <Typography component="h1" variant="h6">
               Sign up
             </Typography>
-            <p className='m-4 text-lg'>
+            <p className="m-4 text-lg">
               <TextField
-              variant="outlined"
-              required
-              fullWidth
-              id="email"
-              label="Email Address"
-              name="email"
-              value={state.email}
-              autoComplete="email"
-              onChange={handleChange}
+                variant="outlined"
+                required
+                fullWidth
+                id="email"
+                label="Email Address"
+                name="email"
+                value={state.email}
+                autoComplete="email"
+                onChange={handleChange}
               />
             </p>
-            <p className='m-4 text-lg'>
-               <TextField
-                 variant="outlined"
-                 required
-                 fullWidth
-                 name="password"
-                 label="Password"
-                 type="password"
-                 id="password"
-                 value={state.password}
-                 autoComplete="current-password"
-                 onChange={handleChange}
-               />
+            <p className="m-4 text-lg">
+              <TextField
+                variant="outlined"
+                required
+                fullWidth
+                name="password"
+                label="Password"
+                type="password"
+                id="password"
+                value={state.password}
+                autoComplete="current-password"
+                onChange={handleChange}
+              />
             </p>
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              color="primary"
-            >
+            <Button type="submit" fullWidth variant="contained" color="primary">
               Sign Up
             </Button>
 
@@ -131,13 +182,12 @@ const SignUp: React.FC = () => {
           </form>
           <Grid container spacing={2}>
             <Grid item xs={12}>
-              <GithubLoginButton
-                onClick={handleSignUpWithGitHub}>
+              <GithubLoginButton onClick={handleSignUpWithGitHub}>
                 <span>Sign up with Github</span>
               </GithubLoginButton>
             </Grid>
 
-            <Grid container justify="flex-end">
+            <Grid container justifyContent="flex-end">
               <Grid item>
                 <Link href="#" variant="body2">
                   Already have an account? Sign in
@@ -158,7 +208,7 @@ const SignUp: React.FC = () => {
         </Box>
       </div>
     </div>
-  );
+  )
 }
 
 export default SignUp
